@@ -34,6 +34,9 @@
 # @param server_jruby_gem_home
 #   Puppetserver jruby gemhome
 #
+# @param server_environment_vars
+#   Puppetserver hash of environment vars
+#
 # @param server_cipher_suites
 #   Puppetserver array of acceptable ciphers
 #
@@ -57,6 +60,9 @@
 # @param server_multithreaded
 #   Configures the puppetserver to use multithreaded jruby.
 #
+# @param disable_fips
+#   Disables FIPS support within the JVM
+#
 # @example
 #
 #   # configure memory for java < 8
@@ -78,6 +84,7 @@ class puppet::server::puppetserver (
   $server_puppetserver_rundir             = $puppet::server::puppetserver_rundir,
   $server_puppetserver_logdir             = $puppet::server::puppetserver_logdir,
   $server_jruby_gem_home                  = $puppet::server::jruby_gem_home,
+  $server_environment_vars                = $puppet::server::server_environment_vars,
   $server_ruby_load_paths                 = $puppet::server::ruby_load_paths,
   $server_cipher_suites                   = $puppet::server::cipher_suites,
   $server_max_active_instances            = $puppet::server::max_active_instances,
@@ -110,9 +117,9 @@ class puppet::server::puppetserver (
   $server_use_legacy_auth_conf            = $puppet::server::use_legacy_auth_conf,
   $server_check_for_updates               = $puppet::server::check_for_updates,
   $server_environment_class_cache_enabled = $puppet::server::environment_class_cache_enabled,
-  $server_jruby9k                         = $puppet::server::puppetserver_jruby9k,
   $server_metrics                         = $puppet::server::puppetserver_metrics,
   $server_profiler                        = $puppet::server::puppetserver_profiler,
+  $server_telemetry                       = $puppet::server::puppetserver_telemetry,
   $metrics_jmx_enable                     = $puppet::server::metrics_jmx_enable,
   $metrics_graphite_enable                = $puppet::server::metrics_graphite_enable,
   $metrics_graphite_host                  = $puppet::server::metrics_graphite_host,
@@ -137,16 +144,23 @@ class puppet::server::puppetserver (
   $max_open_files                         = $puppet::server::max_open_files,
   $versioned_code_id                      = $puppet::server::versioned_code_id,
   $versioned_code_content                 = $puppet::server::versioned_code_content,
+  $disable_fips                           = $facts['os']['family'] == 'RedHat' and $facts['os']['release']['major'] == '8',
+  $jolokia_metrics_whitelist              = $puppet::server::jolokia_metrics_whitelist,
 ) {
   include puppet::server
 
-  if versioncmp($server_puppetserver_version, '5.3.6') < 0 {
-    fail('puppetserver <5.3.6 is not supported by this module version')
+  if versioncmp($server_puppetserver_version, '6.15.0') < 0 {
+    fail('puppetserver <6.15.0 is not supported by this module version')
   }
 
   $puppetserver_package = pick($puppet::server::package, 'puppetserver')
 
-  $jvm_cmd_arr = ["-Xms${jvm_min_heap_size}", "-Xmx${jvm_max_heap_size}", $jvm_extra_args]
+  $jvm_heap_arr = ["-Xms${jvm_min_heap_size}", "-Xmx${jvm_max_heap_size}"]
+  if $disable_fips {
+    $jvm_cmd_arr = $jvm_heap_arr + ['-Dcom.redhat.fips=false', $jvm_extra_args]
+  } else {
+    $jvm_cmd_arr = $jvm_heap_arr + [$jvm_extra_args]
+  }
   $jvm_cmd = strip(join(flatten($jvm_cmd_arr), ' '))
 
   if $facts['os']['family'] == 'FreeBSD' {
@@ -186,16 +200,11 @@ class puppet::server::puppetserver (
       changes => "set BOOTSTRAP_CONFIG '\"${bootstrap_paths}\"'",
     }
 
-    $jruby_jar_changes = $server_jruby9k ? {
-      true    => "set JRUBY_JAR '\"/opt/puppetlabs/server/apps/puppetserver/jruby-9k.jar\"'",
-      default => 'rm JRUBY_JAR'
-    }
-
     augeas { 'puppet::server::puppetserver::jruby_jar':
       lens    => 'Shellvars.lns',
       incl    => $config,
       context => "/files${config}",
-      changes => $jruby_jar_changes,
+      changes => 'rm JRUBY_JAR',
     }
 
     $ensure_max_open_files = $max_open_files ? {

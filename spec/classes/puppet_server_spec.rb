@@ -88,7 +88,6 @@ describe 'puppet' do
         it { should_not contain_puppet__config__master('environment_timeout') }
         it { should_not contain_puppet__config__master('manifest') }
         it { should_not contain_puppet__config__master('modulepath') }
-        it { should_not contain_puppet__config__master('config_version') }
         it { should_not contain_puppet__config__master('trusted_external_command') }
 
         it { should contain_puppet__config__master('external_nodes').with_value("#{etcdir}\/node.rb") }
@@ -667,35 +666,30 @@ describe 'puppet' do
           it { should_not contain_puppet__config__master('trusted_external_command') }
         end
 
-        context 'with puppetversion >= 6.11' do
-          describe 'when server_trusted_external_command => /usr/local/sbin/trusted_external_command' do
-            let(:facts) do
-              super().merge(
-                puppetversion: '6.11.0'
-              )
-            end
-            let(:params) do
-              super().merge(server_trusted_external_command: '/usr/local/sbin/trusted_external_command' )
-            end
-
-            it { should contain_puppet__config__master('trusted_external_command').with_value('/usr/local/sbin/trusted_external_command') }
+        describe 'when server_trusted_external_command => /usr/local/sbin/trusted_external_command' do
+          let(:params) do
+            super().merge(server_trusted_external_command: '/usr/local/sbin/trusted_external_command' )
           end
+
+          it { should contain_puppet__config__master('trusted_external_command').with_value('/usr/local/sbin/trusted_external_command') }
+        end
+      end
+
+      describe 'with multiple environment paths' do
+        let(:params) do
+          super().merge(
+            server_envs_dir: ['/etc/puppetlabs/code/environments/', '/etc/puppetlabs/code/unmanaged-environments/'],
+            server_git_repo_path: '/test/puppet',
+            server_post_hook_name: 'post-receive',
+            server_git_repo: true,
+          )
         end
 
-        context 'with puppetversion < 6.11' do
-          describe 'when server_trusted_external_command => /usr/local/sbin/trusted_external_command' do
-            let(:facts) do
-              super().merge(
-                puppetversion: '6.5.0'
-              )
-            end
-            let(:params) do
-              super().merge(server_trusted_external_command: '/usr/local/sbin/trusted_external_command' )
-            end
-
-            it { is_expected.to raise_error(Puppet::Error, /\$server_trusted_external_command is only available for Puppet > 6\.11/) }
-          end
-        end
+        it { should contain_puppet__config__main('environmentpath').with_value('/etc/puppetlabs/code/environments/:/etc/puppetlabs/code/unmanaged-environments/') }
+        it { should contain_file('/etc/puppetlabs/code/environments/') }
+        it { should contain_file('/etc/puppetlabs/code/unmanaged-environments/') }
+        it { should contain_git__repo('puppet_repo').that_requires('File[/etc/puppetlabs/code/environments/]') }
+        it { should contain_file('/test/puppet/hooks/post-receive').with_content(/ENVIRONMENT_BASEDIR\s=\s"\/etc\/puppetlabs\/code\/environments\/"/) }
       end
     end
   end

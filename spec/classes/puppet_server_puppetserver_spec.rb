@@ -22,7 +22,8 @@ describe 'puppet' do
           server_jvm_extra_args: '',
           server_max_active_instances: 2,
           server_puppetserver_dir: '/etc/custom/puppetserver',
-          server_puppetserver_version: '5.3.6',
+          # Keep this to the minimally supported version
+          server_puppetserver_version: '6.15.0',
         }
       end
 
@@ -58,19 +59,36 @@ describe 'puppet' do
                      .with_incl('/etc/default/puppetserver')
                      .with_lens('Shellvars.lns')
           }
-          it {
-            should contain_augeas('puppet::server::puppetserver::jvm')
-              .with_changes(['set JAVA_ARGS \'"-Xms2G -Xmx2G"\'', 'set JAVA_BIN /usr/bin/java'])
+          if facts[:os]['family'] == 'RedHat' and facts[:os]['release']['major'] == '8'
+            it {
+              should contain_augeas('puppet::server::puppetserver::jvm')
+                .with_changes(['set JAVA_ARGS \'"-Xms2G -Xmx2G -Dcom.redhat.fips=false"\'', 'set JAVA_BIN /usr/bin/java'])
+                .with_context('/files/etc/default/puppetserver')
+                .with_incl('/etc/default/puppetserver')
+                .with_lens('Shellvars.lns')
+            }
+          else
+            it {
+              should contain_augeas('puppet::server::puppetserver::jvm')
+                .with_changes(['set JAVA_ARGS \'"-Xms2G -Xmx2G"\'', 'set JAVA_BIN /usr/bin/java'])
+                .with_context('/files/etc/default/puppetserver')
+                .with_incl('/etc/default/puppetserver')
+                .with_lens('Shellvars.lns')
+            }
+          end
+          it do
+            should contain_augeas('puppet::server::puppetserver::jruby_jar')
+              .with_changes(['rm JRUBY_JAR'])
               .with_context('/files/etc/default/puppetserver')
               .with_incl('/etc/default/puppetserver')
               .with_lens('Shellvars.lns')
-          }
+          end
         end
         it { should contain_file('/etc/custom/puppetserver/conf.d/ca.conf')
                       .with_ensure('file')
                       .with_content(/^( *)allow-subject-alt-names: false$/)
                       .with_content(/^( *)allow-authorization-extensions: false$/)
-                      .without_content(/^( *)enable-infra-crl: false$/)
+                      .with_content(/^( *)enable-infra-crl: false$/)
         }
         it {
           should contain_file(puppetserver_conf)
@@ -126,7 +144,7 @@ describe 'puppet' do
       end
 
       describe 'use-legacy-auth-conf' do
-        context 'when server_puppetserver_version >= 5.3.6 and < 7.0.0' do
+        context 'when server_puppetserver_version >= 6.15.0 and < 7.0.0' do
           context 'with default parameters' do
             it { should contain_file(puppetserver_conf).with_content(/^    use-legacy-auth-conf: false$/) }
           end
@@ -164,6 +182,16 @@ describe 'puppet' do
         end
       end
 
+      describe 'environment-vars' do
+        context 'with default parameters' do
+          it { should contain_file(puppetserver_conf).with_content(/^    environment-vars: \{\s*\}$/) }
+        end
+        context 'with {"foo" => "bar"}' do
+          let(:params) { super().merge(server_environment_vars: { 'foo' => 'bar' }) }
+          it { should contain_file(puppetserver_conf).with_content(/^    environment-vars: \{\s*"foo" : bar\s*\}$/) }
+        end
+      end
+
       describe 'server_max_requests_per_instance' do
         context 'with default parameters' do
           it { should contain_file(puppetserver_conf).with_content(/^    max-requests-per-instance: 0$/) }
@@ -191,23 +219,11 @@ describe 'puppet' do
 
       describe 'server_multithreaded' do
         context 'with default parameters' do
-          context 'when server_puppetserver_version >= 5.3.6 and < 6.8.0' do
-            it { should contain_file(puppetserver_conf).without_content(/multithreaded/) }
-          end
-          context 'when server_puppetserver_version == 6.8.0' do
-            let(:params) { super().merge(server_puppetserver_version: '6.8.0') }
-            it { should contain_file(puppetserver_conf).with_content(/^    multithreaded: false\n/) }
-          end
+          it { should contain_file(puppetserver_conf).with_content(/^    multithreaded: false\n/) }
         end
         context 'with custom server_multithreaded' do
           let(:params) { super().merge(server_multithreaded: true) }
-          context 'when server_puppetserver_version >= 5.3.6 and < 6.8.0' do
-            it { should contain_file(puppetserver_conf).without_content(/multithreaded/) }
-          end
-          context 'when server_puppetserver_version == 6.8.0' do
-            let(:params) { super().merge(server_puppetserver_version: '6.8.0') }
-            it { should contain_file(puppetserver_conf).with_content(/^    multithreaded: true\n/) }
-          end
+          it { should contain_file(puppetserver_conf).with_content(/^    multithreaded: true\n/) }
         end
       end
 
@@ -257,7 +273,7 @@ describe 'puppet' do
           it {
             should contain_file(puppetserver_conf)
               .with_content(/^    # Whether to enable http-client metrics; defaults to 'true'.\n    metrics-enabled: true$(.*)/)
-              .with_content(/^profiler: \{\n    # enable or disable profiling for the Ruby code;\n    enabled: false/)
+              .with_content(/^profiler: \{\n    # enable or disable profiling for the Ruby code;\n    enabled: true/)
           }
           it {
             should contain_file('/etc/custom/puppetserver/conf.d/metrics.conf')
@@ -276,9 +292,41 @@ describe 'puppet' do
           it {
             should contain_file(puppetserver_conf)
               .with_content(/^    # Whether to enable http-client metrics; defaults to 'true'.\n    metrics-enabled: false$/)
-              .with_content(/^profiler: \{\n    # enable or disable profiling for the Ruby code;\n    enabled: false/)
+              .with_content(/^profiler: \{\n    # enable or disable profiling for the Ruby code;\n    enabled: true/)
           }
           it { should contain_file('/etc/custom/puppetserver/conf.d/metrics.conf').with_ensure('file') }
+        end
+
+        context 'when server_profiler => false' do
+          let(:params) { super().merge(server_puppetserver_profiler: false) }
+          it {
+            should contain_file(puppetserver_conf)
+              .with_content(/^profiler: \{\n    # enable or disable profiling for the Ruby code;\n    enabled: false/)
+          }
+        end
+      end
+
+      describe 'server_telemetry' do
+        context 'when server_puppetserver_version == 7.0.0' do
+          let(:params) { super().merge(server_puppetserver_version: '7.0.0') }
+          context 'with default parameters' do
+            it {
+              should contain_file(puppetserver_conf)
+                .with_content(/^dropsonde: \{\n    # enable or disable telemetry\n    enabled: true/)
+            }
+          end
+
+          context 'when server_telemetry => false' do
+          let(:params) { super().merge(server_puppetserver_telemetry: false) }
+            it {
+              should contain_file(puppetserver_conf)
+                .with_content(/^dropsonde: \{\n    # enable or disable telemetry\n    enabled: false/)
+            }
+          end
+        end
+
+        context 'when server_puppetserver_version >= 6.15.0 and < 7.0.0' do
+          it { should contain_file(puppetserver_conf).without_content(/^dropsonde: \{/) }
         end
       end
 
@@ -326,30 +374,6 @@ describe 'puppet' do
         end
       end
 
-      describe 'server_jruby9k', unless: facts[:osfamily] == 'FreeBSD' do
-        context 'when server_jruby9k => true' do
-          let(:params) { super().merge(server_puppetserver_jruby9k: true) }
-          it do
-            should contain_augeas('puppet::server::puppetserver::jruby_jar')
-              .with_changes(['set JRUBY_JAR \'"/opt/puppetlabs/server/apps/puppetserver/jruby-9k.jar"\''])
-              .with_context('/files/etc/default/puppetserver')
-              .with_incl('/etc/default/puppetserver')
-              .with_lens('Shellvars.lns')
-          end
-        end
-
-        context 'when server_jruby9k => false' do
-          let(:params) { super().merge(server_puppetserver_jruby9k: false) }
-          it do
-            should contain_augeas('puppet::server::puppetserver::jruby_jar')
-              .with_changes(['rm JRUBY_JAR'])
-              .with_context('/files/etc/default/puppetserver')
-              .with_incl('/etc/default/puppetserver')
-              .with_lens('Shellvars.lns')
-          end
-        end
-      end
-
       describe 'server_max_open_files', unless: facts[:osfamily] == 'FreeBSD' do
         context 'when server_max_open_files => undef' do
           it do
@@ -392,6 +416,17 @@ describe 'puppet' do
               .with_changes(['set puppetserver_java_opts \'"-Xms2G -Xmx2G -XX:foo=bar -XX:bar=foo"\''])
               .with_context('/files/etc/rc.conf')
           }
+        elsif facts[:os]['family'] == 'RedHat' and facts[:os]['release']['major'] == '8'
+          it {
+            should contain_augeas('puppet::server::puppetserver::jvm')
+              .with_changes([
+                              'set JAVA_ARGS \'"-Xms2G -Xmx2G -Dcom.redhat.fips=false -XX:foo=bar -XX:bar=foo"\'',
+                              'set JAVA_BIN /usr/bin/java'
+                            ])
+              .with_context('/files/etc/default/puppetserver')
+              .with_incl('/etc/default/puppetserver')
+              .with_lens('Shellvars.lns')
+          }
         else
           it {
             should contain_augeas('puppet::server::puppetserver::jvm')
@@ -408,16 +443,30 @@ describe 'puppet' do
 
       describe 'with cli_args parameter', unless: facts[:osfamily] == 'FreeBSD' do
         let(:params) { super().merge(server_jvm_cli_args: '-Djava.io.tmpdir=/var/puppettmp') }
-        it do
-          should contain_augeas('puppet::server::puppetserver::jvm')
-            .with_changes([
-                            'set JAVA_ARGS \'"-Xms2G -Xmx2G"\'',
-                            'set JAVA_BIN /usr/bin/java',
-                            'set JAVA_ARGS_CLI \'"-Djava.io.tmpdir=/var/puppettmp"\''
-                          ])
-            .with_context('/files/etc/default/puppetserver')
-            .with_incl('/etc/default/puppetserver')
-            .with_lens('Shellvars.lns')
+        if facts[:os]['family'] == 'RedHat' and facts[:os]['release']['major'] == '8'
+          it {
+            should contain_augeas('puppet::server::puppetserver::jvm')
+              .with_changes([
+                              'set JAVA_ARGS \'"-Xms2G -Xmx2G -Dcom.redhat.fips=false"\'',
+                              'set JAVA_BIN /usr/bin/java',
+                              'set JAVA_ARGS_CLI \'"-Djava.io.tmpdir=/var/puppettmp"\''
+                            ])
+              .with_context('/files/etc/default/puppetserver')
+              .with_incl('/etc/default/puppetserver')
+              .with_lens('Shellvars.lns')
+          }
+        else
+          it {
+            should contain_augeas('puppet::server::puppetserver::jvm')
+              .with_changes([
+                              'set JAVA_ARGS \'"-Xms2G -Xmx2G"\'',
+                              'set JAVA_BIN /usr/bin/java',
+                              'set JAVA_ARGS_CLI \'"-Djava.io.tmpdir=/var/puppettmp"\''
+                            ])
+              .with_context('/files/etc/default/puppetserver')
+              .with_incl('/etc/default/puppetserver')
+              .with_lens('Shellvars.lns')
+          }
         end
       end
 
@@ -450,91 +499,63 @@ describe 'puppet' do
       end
 
       describe 'Puppet Server CA related settings' do
-        context 'when server_puppetserver_version >= 5.3.6 and < 6.0.0' do
-          context 'with ca parameters set' do
-            let(:params) { super().merge(
-              server_ca_allow_sans: true,
-              server_ca_allow_auth_extensions: true,
-              )
-            }
-            it { should contain_file('/etc/custom/puppetserver/conf.d/ca.conf')
-                          .with_ensure('file')
-                          .with_content(/^( *)allow-subject-alt-names: true$/)
-                          .with_content(/^( *)allow-authorization-extensions: true$/)
-            }
-          end
+        context 'with default parameters' do
+          it { should contain_file('/etc/custom/puppetserver/conf.d/ca.conf')
+                        .with_ensure('file')
+                        .with_content(/^( *)allow-subject-alt-names: false$/)
+                        .with_content(/^( *)allow-authorization-extensions: false$/)
+                        .with_content(/^( *)enable-infra-crl: false$/)
+          }
+          it { should contain_file(auth_conf).with_content(/^( *)pp_cli_auth: "true"$/) }
         end
 
-        context 'when server_puppetserver_version >= 6.0.0' do
-          let(:params) { super().merge(server_puppetserver_version: '6.0.0') }
-          context 'with default parameters' do
-            it { should contain_file('/etc/custom/puppetserver/conf.d/ca.conf')
-                          .with_ensure('file')
-                          .with_content(/^( *)allow-subject-alt-names: false$/)
-                          .with_content(/^( *)allow-authorization-extensions: false$/)
-                          .with_content(/^( *)enable-infra-crl: false$/)
-            }
-            it { should contain_file(auth_conf).with_content(/^( *)pp_cli_auth: "true"$/) }
-          end
-
-          context 'with ca parameters set' do
-            let(:params) { super().merge(
-              server_ca_allow_sans: true,
-              server_ca_allow_auth_extensions: true,
-              server_ca_enable_infra_crl: true,
-              )
-            }
-            it { should contain_file('/etc/custom/puppetserver/conf.d/ca.conf')
-                          .with_ensure('file')
-                          .with_content(/^( *)allow-subject-alt-names: true$/)
-                          .with_content(/^( *)allow-authorization-extensions: true$/)
-                          .with_content(/^( *)enable-infra-crl: true$/)
-            }
-          end
+        context 'with ca parameters set' do
+          let(:params) { super().merge(
+            server_ca_allow_sans: true,
+            server_ca_allow_auth_extensions: true,
+            server_ca_enable_infra_crl: true,
+            )
+          }
+          it { should contain_file('/etc/custom/puppetserver/conf.d/ca.conf')
+                        .with_ensure('file')
+                        .with_content(/^( *)allow-subject-alt-names: true$/)
+                        .with_content(/^( *)allow-authorization-extensions: true$/)
+                        .with_content(/^( *)enable-infra-crl: true$/)
+          }
         end
       end
 
       describe 'puppetlabs v4 catalog for services' do
-        context 'when server_puppetserver_version >= 6.3' do
-          let(:params) { super().merge(server_puppetserver_version: '6.3.0') }
-          let(:content) { catalogue.resource('file', auth_conf).send(:parameters)[:content] }
-          let(:rules) { Hocon.parse(content)['authorization']['rules'] }
-          let(:rule) { rules.find {|rule| rule['name'] == 'puppetlabs v4 catalog for services' } }
+        let(:content) { catalogue.resource('file', auth_conf).send(:parameters)[:content] }
+        let(:rules) { Hocon.parse(content)['authorization']['rules'] }
+        let(:rule) { rules.find {|rule| rule['name'] == 'puppetlabs v4 catalog for services' } }
 
-          it { should contain_file(auth_conf).with_content(%r{^(\ *)path: "\^/puppet/v4/catalog/\?\$"$}) }
-
-          context 'by default' do
-            it { should contain_file(auth_conf).with_content(%r{^(\ *)deny: "\*"\n(\ *)sort-order: 500\n(\ *)name: "puppetlabs v4 catalog for services"}) }
-          end
-
-          context 'with server_trusted_agents' do
-            let(:params) { super().merge(server_puppetserver_trusted_agents: ['jenkins', 'octocatalog-diff']) }
-
-            it { expect(rule['allow']).to eq(['jenkins', 'octocatalog-diff']) }
-          end
-
-          context 'with server_trusted_certificate_extensions' do
-            let(:params) { super().merge(server_puppetserver_trusted_certificate_extensions: [{'pp_authorization' => 'catalog'}]) }
-
-            it { expect(rule['allow']).to eq([{'extensions'=>{'pp_authorization'=>'catalog'}}]) }
-          end
-
-          context 'with server_trusted_agents and server_trusted_certificate_extensions' do
-            let(:params) { super().merge(server_puppetserver_trusted_agents: ['catalog-diff'], server_puppetserver_trusted_certificate_extensions: [{'pp_authorization' => 'catalog'}]) }
-
-            it { expect(rule['allow']).to eq(['catalog-diff',{'extensions'=>{'pp_authorization'=>'catalog'}}]) }
-          end
+        context 'by default' do
+          it { should contain_file(auth_conf).with_content(%r{^(\ *)deny: "\*"\n(\ *)sort-order: 500\n(\ *)name: "puppetlabs v4 catalog for services"}) }
         end
 
-        context 'when server_puppetserver_version < 6.3' do
-          let(:params) { super().merge(server_puppetserver_version: '6.2.0') }
-          it { should contain_file(auth_conf).without_content(%r{^(\ *)path: "\^/puppet/v4/catalog/\?\$"$}) }
+        context 'with server_trusted_agents' do
+          let(:params) { super().merge(server_puppetserver_trusted_agents: ['jenkins', 'octocatalog-diff']) }
+
+          it { expect(rule['allow']).to eq(['jenkins', 'octocatalog-diff']) }
+        end
+
+        context 'with server_trusted_certificate_extensions' do
+          let(:params) { super().merge(server_puppetserver_trusted_certificate_extensions: [{'pp_authorization' => 'catalog'}]) }
+
+          it { expect(rule['allow']).to eq([{'extensions'=>{'pp_authorization'=>'catalog'}}]) }
+        end
+
+        context 'with server_trusted_agents and server_trusted_certificate_extensions' do
+          let(:params) { super().merge(server_puppetserver_trusted_agents: ['catalog-diff'], server_puppetserver_trusted_certificate_extensions: [{'pp_authorization' => 'catalog'}]) }
+
+          it { expect(rule['allow']).to eq(['catalog-diff',{'extensions'=>{'pp_authorization'=>'catalog'}}]) }
         end
       end
 
-      describe 'when server_puppetserver_version < 5.3.6' do
+      describe 'when server_puppetserver_version < 6.15.0' do
         let(:params) { super().merge(server_puppetserver_version: '5.3.5') }
-        it { should raise_error(Puppet::Error, /puppetserver <5.3.6 is not supported by this module version/) }
+        it { should compile.and_raise_error(/puppetserver <6\.15\.0 is not supported by this module version/) }
       end
 
       describe 'allow jetty specific server threads' do
@@ -568,11 +589,28 @@ describe 'puppet' do
               server_versioned_code_content: '/some/code/content/bin',
             )
           end
-    
+
           it {
             should contain_file(puppetserver_conf)
                .with_content(%r{^    code-id-command: /some/code/id/bin\n    code-content-command: /some/code/content/bin$})
           }
+        end
+      end
+
+      describe 'jolokia_metrics_whitelist' do
+        let(:content) { catalogue.resource('file', auth_conf).send(:parameters)[:content] }
+        let(:rules) { Hocon.parse(content)['authorization']['rules'] }
+        let(:rule) { rules.find {|rule| rule['name'] == 'jolokia metrics' } }
+
+        context 'by default' do
+          it { expect(rule).to be_nil }
+        end
+
+        context 'when set' do
+          let(:params) { super().merge(server_jolokia_metrics_whitelist: ['localhost', 'host.example.com']) }
+
+          it { expect(rule['match-request']['path']).to eq('/metrics/v2') }
+          it { expect(rule['allow']).to eq(['localhost', 'host.example.com']) }
         end
       end
     end

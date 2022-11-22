@@ -35,37 +35,7 @@ class puppet::agent::config inherits puppet::config {
     }
   }
 
-  unless $puppet::pluginsync {
-    if versioncmp($facts['puppetserver'], '6.0.0') >= 0 {
-      fail('pluginsync is no longer a setting in Puppet 6')
-    } else {
-      puppet::config::agent { 'pluginsync':
-        value => $puppet::pluginsync,
-      }
-    }
-  }
-
   $puppet::agent_additional_settings.each |$key,$value| {
     puppet::config::agent { $key: value => $value }
-  }
-
-  if $puppet::runmode == 'service' {
-    $should_start = 'yes'
-  } else {
-    $should_start = 'no'
-  }
-
-  if $facts['os']['family'] == 'Debian' {
-    augeas {'puppet::set_start':
-      context => '/files/etc/default/puppet',
-      changes => "set START ${should_start}",
-      incl    => '/etc/default/puppet',
-      lens    => 'Shellvars.lns',
-    }
-    if $puppet::remove_lock {
-      file {'/var/lib/puppet/state/agent_disabled.lock':
-        ensure => absent,
-      }
-    }
   }
 }

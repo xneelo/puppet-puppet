@@ -61,7 +61,6 @@
 # $external_nodes::                    External nodes classifier executable
 #
 # $trusted_external_command::          The external trusted facts script to use.
-#                                      (Puppet >= 6.11 only).
 #
 # $git_repo::                          Use git repository as a source of modules
 #
@@ -71,7 +70,10 @@
 #
 # $environments_mode::                 Environments directory mode.
 #
-# $envs_dir::                          Directory that holds puppet environments
+# $envs_dir::                          List of directories that hold puppet environments
+#                                      All listed directories will be created and attributes managed,
+#                                      but only the first listed path will be used to populate
+#                                      environments from git repo branches.
 #
 # $envs_target::                       Indicates that $envs_dir should be
 #                                      a symbolic link to this target
@@ -119,10 +121,6 @@
 #
 # $codedir::                           Override the puppet code directory.
 #
-# $config_version::                    How to determine the configuration version. When
-#                                      using git_repo, by default a git describe
-#                                      approach will be installed.
-#
 # $server_foreman_facts::              Should foreman receive facts from puppet
 #
 # $foreman::                           Should foreman integration be installed
@@ -163,6 +161,10 @@
 #
 # $jruby_gem_home::                    Where jruby gems are located for puppetserver
 #
+# $server_environment_vars::           A hash of environment variables and their values
+#                                      which the puppetserver is allowed to see.
+#                                      To pass an existing variable use {'MYVAR': '${MYVAR}'}.
+#
 # $default_manifest::                  Toggle if default_manifest setting should
 #                                      be added to the [main] section
 #
@@ -198,14 +200,14 @@
 # $max_requests_per_instance::         Max number of requests per jruby instance. Defaults to 0 (disabled)
 #
 # $max_queued_requests::               The maximum number of requests that may be queued waiting to borrow a
-#                                      JRuby from the pool. (Puppetserver 5.x only)
-#                                      Defaults to 0 (disabled) for Puppetserver >= 5.0
+#                                      JRuby from the pool.
+#                                      Defaults to 0 (disabled).
 #
 # $max_retry_delay::                   Sets the upper limit for the random sleep set as a Retry-After header on
-#                                      503 responses returned when max-queued-requests is enabled. (Puppetserver 5.x only)
-#                                      Defaults to 1800 for Puppetserver >= 5.0
+#                                      503 responses returned when max-queued-requests is enabled.
+#                                      Defaults to 1800 for
 #
-# $multithreaded::                     Use multithreaded jruby. (Puppetserver >= 6.8 only).  Defaults to false.
+# $multithreaded::                     Use multithreaded jruby. Defaults to false.
 #
 # $idle_timeout::                      How long the server will wait for a response on an existing connection
 #
@@ -257,13 +259,15 @@
 # $allow_header_cert_info::            Allow client authentication over HTTP Headers
 #                                      Defaults to false, is also activated by the $http setting
 #
-# $puppetserver_jruby9k::              For Puppetserver 5, use JRuby 9k? Defaults to false
-#
 # $puppetserver_metrics::              Enable puppetserver http-client metrics
 #                                      Defaults to false because that's the Puppet Inc. default behaviour.
 #
 # $puppetserver_profiler::             Enable JRuby profiling.
 #                                      Defaults to false because that's the Puppet Inc. default behaviour.
+#
+# $puppetserver_telemetry::            Enable Dropsonde telemetry.
+#                                      Valid on puppetserver >= 7
+#                                      Defaults to true because that's the Puppet Inc. default behaviour since puppet 7
 #
 # $metrics_jmx_enable::                Enable or disable JMX metrics reporter. Defaults to true
 #
@@ -282,9 +286,9 @@
 # $metrics_allowed::                   Specify metrics to allow in addition to those in the default list
 #                                      Defaults to undef
 #
-# $puppetserver_experimental::         For Puppetserver 5, enable the /puppet/experimental route? Defaults to true
+# $puppetserver_experimental::         Enable the /puppet/experimental route? Defaults to true
 #
-# $puppetserver_auth_template::        Template for generating /etc/puppetlabs/puppetserver/conf.d/auth.conf 
+# $puppetserver_auth_template::        Template for generating /etc/puppetlabs/puppetserver/conf.d/auth.conf
 #
 # $puppetserver_trusted_agents::       Certificate names of agents that are allowed to fetch *all* catalogs. Defaults to empty array
 #
@@ -331,6 +335,9 @@
 # $versioned_code_content::            Contains the path to an executable script that Puppet Server invokes when an agent makes
 #                                      a static_file_content API request for the contents of a file resource that
 #                                      has a source attribute with a puppet:/// URI value.
+#
+# $jolokia_metrics_whitelist::         The whitelist of clients that
+#                                      can query the jolokia /metrics/v2 endpoint
 class puppet::server(
   Variant[Boolean, Stdlib::Absolutepath] $autosign = $puppet::autosign,
   Array[String] $autosign_entries = $puppet::autosign_entries,
@@ -365,7 +372,6 @@ class puppet::server(
   Variant[Undef, String[0], Stdlib::Absolutepath] $external_nodes = $puppet::server_external_nodes,
   Optional[Stdlib::Absolutepath] $trusted_external_command = $puppet::server_trusted_external_command,
   Array[String] $cipher_suites = $puppet::server_cipher_suites,
-  Optional[String] $config_version = $puppet::server_config_version,
   Integer[0] $connect_timeout = $puppet::server_connect_timeout,
   Integer[0] $web_idle_timeout = $puppet::server_web_idle_timeout,
   Boolean $git_repo = $puppet::server_git_repo,
@@ -375,7 +381,7 @@ class puppet::server(
   String $environments_owner = $puppet::server_environments_owner,
   Optional[String] $environments_group = $puppet::server_environments_group,
   Pattern[/^[0-9]{3,4}$/] $environments_mode = $puppet::server_environments_mode,
-  Stdlib::Absolutepath $envs_dir = $puppet::server_envs_dir,
+  Array[Stdlib::Absolutepath, 1] $envs_dir = $puppet::server_envs_dir,
   Optional[Stdlib::Absolutepath] $envs_target = $puppet::server_envs_target,
   Variant[Undef, String[0], Array[Stdlib::Absolutepath]] $common_modules_path = $puppet::server_common_modules_path,
   Pattern[/^[0-9]{3,4}$/] $git_repo_mode = $puppet::server_git_repo_mode,
@@ -415,6 +421,7 @@ class puppet::server(
   Optional[Variant[String,Array[String]]] $jvm_extra_args = $puppet::server_jvm_extra_args,
   Optional[String] $jvm_cli_args = $puppet::server_jvm_cli_args,
   Optional[Stdlib::Absolutepath] $jruby_gem_home = $puppet::server_jruby_gem_home,
+  Hash[String, String] $server_environment_vars = $puppet::server_environment_vars,
   Integer[1] $max_active_instances = $puppet::server_max_active_instances,
   Integer[0] $max_requests_per_instance = $puppet::server_max_requests_per_instance,
   Integer[0] $max_queued_requests = $puppet::server_max_queued_requests,
@@ -424,9 +431,9 @@ class puppet::server(
   Boolean $check_for_updates = $puppet::server_check_for_updates,
   Boolean $environment_class_cache_enabled = $puppet::server_environment_class_cache_enabled,
   Boolean $allow_header_cert_info = $puppet::server_allow_header_cert_info,
-  Boolean $puppetserver_jruby9k = $puppet::server_puppetserver_jruby9k,
   Optional[Boolean] $puppetserver_metrics = $puppet::server_puppetserver_metrics,
   Boolean $puppetserver_profiler = $puppet::server_puppetserver_profiler,
+  Boolean $puppetserver_telemetry = $puppet::server_puppetserver_telemetry,
   Boolean $metrics_jmx_enable = $puppet::server_metrics_jmx_enable,
   Boolean $metrics_graphite_enable = $puppet::server_metrics_graphite_enable,
   String $metrics_graphite_host = $puppet::server_metrics_graphite_host,
@@ -450,6 +457,7 @@ class puppet::server(
   Optional[Integer[1]] $max_open_files = $puppet::server_max_open_files,
   Optional[Stdlib::Absolutepath] $versioned_code_id = $puppet::server_versioned_code_id,
   Optional[Stdlib::Absolutepath] $versioned_code_content = $puppet::server_versioned_code_content,
+  Array[String[1]] $jolokia_metrics_whitelist = $puppet::server_jolokia_metrics_whitelist,
 ) {
   # For Puppetserver, certain configuration parameters are version specific. We
   # assume a particular version here.
@@ -457,12 +465,8 @@ class puppet::server(
     $real_puppetserver_version = $puppetserver_version
   } elsif versioncmp($facts['puppetversion'], '7.0.0') >= 0 {
     $real_puppetserver_version = '7.0.0'
-  } elsif versioncmp($facts['puppetversion'], '6.11.0') >= 0 {
-    $real_puppetserver_version = '6.11.0'
-  } elsif versioncmp($facts['puppetversion'], '6.0.0') >= 0 {
-    $real_puppetserver_version = '6.0.0'
   } else {
-    $real_puppetserver_version = '5.3.6'
+    $real_puppetserver_version = '6.15.0'
   }
 
   if versioncmp($real_puppetserver_version, '7.0.0') >= 0 {
@@ -485,16 +489,6 @@ class puppet::server(
 
   $ssl_cert      = "${ssl_dir}/certs/${certname}.pem"
   $ssl_cert_key  = "${ssl_dir}/private_keys/${certname}.pem"
-
-  if $config_version == undef {
-    if $git_repo {
-      $config_version_cmd = "git --git-dir ${envs_dir}/\$environment/.git describe --all --long"
-    } else {
-      $config_version_cmd = undef
-    }
-  } else {
-    $config_version_cmd = $config_version
-  }
 
   if versioncmp($real_puppetserver_version, '7.0.0') >= 0 {
     if $use_legacy_auth_conf {

@@ -25,25 +25,15 @@ describe 'Scenario: install puppetserver (latest):', unless: unsupported_puppets
     end
   end
 
-  describe 'server_max_open_files' do
+  # This is broken on Ubuntu Focal
+  # https://github.com/theforeman/puppet-puppet/issues/832
+  describe 'server_max_open_files', unless: unsupported_puppetserver || fact('os.release.major') == '20.04' do
     it_behaves_like 'an idempotent resource' do
       let(:manifest) do
         <<-MANIFEST
         class { 'puppet':
           server                => true,
           server_max_open_files => 32143,
-        }
-
-        # Puppet 5 + puppet/systemd 3 workaround
-        # Also a possible systemd bug on Ubuntu 20.04
-        # https://github.com/theforeman/puppet-puppet/pull/779#issuecomment-886847275
-        if $puppet::server_max_open_files and (versioncmp($facts['puppetversion'], '6.1') < 0 or $facts['os']['name'] == 'Ubuntu' and $facts['os']['release']['major'] == '20.04') {
-          exec { 'puppetserver-systemctl-daemon-reload':
-            command     => 'systemctl daemon-reload',
-            refreshonly => true,
-            path        => $facts['path'],
-            subscribe   => File['/etc/systemd/system/puppetserver.service.d/limits.conf'],
-          }
         }
         MANIFEST
       end

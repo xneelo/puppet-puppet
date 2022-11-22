@@ -36,6 +36,7 @@ class puppet::server::config inherits puppet::config {
   $server_external_nodes       = $puppet::server::external_nodes
   $server_environment_timeout  = $puppet::server::environment_timeout
   $trusted_external_command    = $puppet::server::trusted_external_command
+  $primary_envs_dir            = $puppet::server::envs_dir[0]
 
   if $server_external_nodes and $server_external_nodes != '' {
     class{ 'puppet::server::enc':
@@ -44,9 +45,6 @@ class puppet::server::config inherits puppet::config {
   }
 
   if $trusted_external_command {
-    if versioncmp($puppet::server::real_puppetserver_version, '6.11') < 0 {
-      fail('$server_trusted_external_command is only available for Puppet > 6.11')
-    }
     puppet::config::master {
       'trusted_external_command': value => $trusted_external_command,
     }
@@ -59,7 +57,7 @@ class puppet::server::config inherits puppet::config {
 
   puppet::config::main {
     'reports':            value => $puppet::server::reports;
-    'environmentpath':    value => $puppet::server::envs_dir;
+    'environmentpath':    value => $puppet::server::envs_dir.join(':');
   }
   if $puppet::server::hiera_config and !empty($puppet::server::hiera_config){
     puppet::config::main {
@@ -157,17 +155,9 @@ class puppet::server::config inherits puppet::config {
 
   # Generate a new CA and host cert if our host cert doesn't exist
   if $puppet::server::ca {
-    if versioncmp($puppet::server::real_puppetserver_version, '6.0') > 0 {
-      $creates = $puppet::server::ssl_ca_cert
-      $command = "${puppet::puppetserver_cmd} ca setup"
-    } else {
-      $creates = $puppet::server::ssl_cert
-      $command = "${puppet::puppet_cmd} cert --generate ${puppet::server::certname} --allow-dns-alt-names"
-    }
-
     exec {'puppet_server_config-generate_ca_cert':
-      creates => $creates,
-      command => $command,
+      creates => $puppet::server::ssl_ca_cert,
+      command => "${puppet::puppetserver_cmd} ca setup",
       umask   => '0022',
       require => [
         Concat["${puppet::server::dir}/puppet.conf"],
@@ -269,7 +259,7 @@ class puppet::server::config inherits puppet::config {
       mode    => $puppet::server::git_repo_mode,
       user    => $puppet::server::git_repo_user,
       group   => $puppet::server::git_repo_group,
-      require => File[$puppet::vardir, $puppet::server::envs_dir],
+      require => File[$puppet::vardir, $primary_envs_dir],
     }
 
     $git_branch_map = $puppet::server::git_branch_map

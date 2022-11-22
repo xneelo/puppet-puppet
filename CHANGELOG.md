@@ -1,5 +1,64 @@
 # Changelog
 
+## [16.3.0](https://github.com/theforeman/puppet-puppet/tree/16.3.0) (2022-06-20)
+
+[Full Changelog](https://github.com/theforeman/puppet-puppet/compare/16.2.0...16.3.0)
+
+**Implemented enhancements:**
+
+- Add dropsonde telemetry config [\#838](https://github.com/theforeman/puppet-puppet/pull/838) ([teluq-pbrideau](https://github.com/teluq-pbrideau))
+- Add Array of Integers as valid type for run\_minute [\#835](https://github.com/theforeman/puppet-puppet/pull/835) ([danifr](https://github.com/danifr))
+
+## [16.2.0](https://github.com/theforeman/puppet-puppet/tree/16.2.0) (2022-04-20)
+
+[Full Changelog](https://github.com/theforeman/puppet-puppet/compare/16.1.0...16.2.0)
+
+**Implemented enhancements:**
+
+- Add `server_jolokia_metrics_whitelist` parameter [\#826](https://github.com/theforeman/puppet-puppet/pull/826) ([alexjfisher](https://github.com/alexjfisher))
+- Change `server_puppetserver_profiler` and `server_puppetserver_metrics` defaults to true [\#825](https://github.com/theforeman/puppet-puppet/pull/825) ([alexjfisher](https://github.com/alexjfisher))
+
+**Fixed bugs:**
+
+- metadata.json: Use https URL to git repo [\#830](https://github.com/theforeman/puppet-puppet/pull/830) ([bastelfreak](https://github.com/bastelfreak))
+
+## [16.1.0](https://github.com/theforeman/puppet-puppet/tree/16.1.0) (2022-03-17)
+
+[Full Changelog](https://github.com/theforeman/puppet-puppet/compare/16.0.0...16.1.0)
+
+**Implemented enhancements:**
+
+- Disable FIPS support within JVM for Puppet [\#828](https://github.com/theforeman/puppet-puppet/pull/828) ([ehelms](https://github.com/ehelms))
+
+## [16.0.0](https://github.com/theforeman/puppet-puppet/tree/16.0.0) (2022-02-07)
+
+[Full Changelog](https://github.com/theforeman/puppet-puppet/compare/15.2.0...16.0.0)
+
+**Breaking changes:**
+
+- Drop EL6 support [\#823](https://github.com/theforeman/puppet-puppet/pull/823) ([ekohl](https://github.com/ekohl))
+- Drop Puppet 5 support, require \>= 6.15.0 + drop pluginsync & jruby9k parameters [\#822](https://github.com/theforeman/puppet-puppet/pull/822) ([ekohl](https://github.com/ekohl))
+- Remove Puppet start workaround on Debian [\#807](https://github.com/theforeman/puppet-puppet/pull/807) ([ekohl](https://github.com/ekohl))
+- Drop config\_version and environment.conf [\#805](https://github.com/theforeman/puppet-puppet/pull/805) ([optiz0r](https://github.com/optiz0r))
+- Support multiple envs\_dir directories [\#803](https://github.com/theforeman/puppet-puppet/pull/803) ([optiz0r](https://github.com/optiz0r))
+
+**Implemented enhancements:**
+
+- Support multiple path in environmentpath parameter [\#708](https://github.com/theforeman/puppet-puppet/issues/708)
+- puppet/extlib: Allow 6.x [\#821](https://github.com/theforeman/puppet-puppet/pull/821) ([bastelfreak](https://github.com/bastelfreak))
+- Improve support for chocolatey package provider on Windows [\#818](https://github.com/theforeman/puppet-puppet/pull/818) ([fraenki](https://github.com/fraenki))
+- puppetlabs/stdlib: Allow 8.x [\#817](https://github.com/theforeman/puppet-puppet/pull/817) ([bastelfreak](https://github.com/bastelfreak))
+- Support "environment-vars" setting in puppetserver.conf [\#806](https://github.com/theforeman/puppet-puppet/pull/806) ([phihos](https://github.com/phihos))
+- Rely on the service\_provider fact [\#694](https://github.com/theforeman/puppet-puppet/pull/694) ([ekohl](https://github.com/ekohl))
+
+## [15.2.0](https://github.com/theforeman/puppet-puppet/tree/15.2.0) (2021-11-05)
+
+[Full Changelog](https://github.com/theforeman/puppet-puppet/compare/15.1.0...15.2.0)
+
+**Implemented enhancements:**
+
+- Switch to puppet/systemd [\#804](https://github.com/theforeman/puppet-puppet/pull/804) ([ekohl](https://github.com/ekohl))
+
 ## [15.1.0](https://github.com/theforeman/puppet-puppet/tree/15.1.0) (2021-07-26)
 
 [Full Changelog](https://github.com/theforeman/puppet-puppet/compare/15.0.0...15.1.0)

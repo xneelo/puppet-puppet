@@ -22,7 +22,6 @@ authorization: {
             sort-order: 500
             name: "puppetlabs v3 catalog from agents"
         },
-<%- if scope.function_versioncmp([@server_puppetserver_version, '6.3.0']) >= 0 -%>
         {
             # Allow services to retrieve catalogs on behalf of others
             match-request: {
@@ -44,7 +43,6 @@ authorization: {
             sort-order: 500
             name: "puppetlabs v4 catalog for services"
         },
-<%- end -%>
         {
             # Allow nodes to retrieve the certificate they requested earlier
             match-request: {
@@ -357,6 +355,21 @@ authorization: {
             allow-unauthenticated: true
             sort-order: 500
             name: "puppetlabs experimental"
+        },
+<%- end -%>
+<%- unless @jolokia_metrics_whitelist.empty? -%>
+        {
+            match-request: {
+                path: "/metrics/v2"
+                type: path
+            }
+            allow: [
+<%- @jolokia_metrics_whitelist.each do |client| -%>
+                "<%= client %>",
+<%- end -%>
+            ]
+            sort-order: 500
+            name: "jolokia metrics"
         },
 <%- end -%>
         {

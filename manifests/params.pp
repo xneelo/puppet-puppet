@@ -9,7 +9,6 @@ class puppet::params {
   $group               = 'puppet'
   $ip                  = '0.0.0.0'
   $port                = 8140
-  $pluginsync          = true
   $splay               = false
   $splaylimit          = 1800
   $runinterval         = 1800
@@ -200,7 +199,6 @@ class puppet::params {
 
   # Will this host be a puppet agent ?
   $agent                      = true
-  $remove_lock                = true
   $client_certname            = $::clientcert
 
   if defined('$::puppetmaster') {
@@ -232,10 +230,6 @@ class puppet::params {
   # Template for server settings in [main]
   $server_main_template = 'puppet/server/puppet.conf.main.erb'
 
-  # The script that is run to determine the reported manifest version. Undef
-  # means we determine it in server.pp
-  $server_config_version       = undef
-
   # Set 'false' for static environments, or 'true' for git-based workflow
   $server_git_repo             = false
   # Git branch to puppet env mapping for the post receive hook
@@ -247,10 +241,10 @@ class puppet::params {
   $server_environments_group   = $root_group
   $server_environments_mode    = '0755'
   # Where we store our puppet environments
-  $server_envs_dir             = "${codedir}/environments"
+  $server_envs_dir             = ["${codedir}/environments"]
   $server_envs_target          = undef
   # Modules in this directory would be shared across all environments
-  $server_common_modules_path  = unique(["${server_envs_dir}/common", "${codedir}/modules", "${sharedir}/modules", '/usr/share/puppet/modules'])
+  $server_common_modules_path  = unique(["${server_envs_dir[0]}/common", "${codedir}/modules", "${sharedir}/modules", '/usr/share/puppet/modules'])
 
   # Dynamic environments config, ignore if the git_repo is 'false'
   # Path to the repository
@@ -270,7 +264,7 @@ class puppet::params {
 
   $puppet_major = regsubst($::puppetversion, '^(\d+)\..*$', '\1')
 
-  if ($facts['os']['family'] =~ /(FreeBSD|DragonFly)/ and versioncmp($puppet_major, '5') >= 0) {
+  if ($facts['os']['family'] =~ /(FreeBSD|DragonFly)/) {
     $server_package = "puppetserver${puppet_major}"
   } else {
     $server_package = undef
@@ -294,37 +288,30 @@ class puppet::params {
   $systemd_unit_name = 'puppet-run'
   # Mechanisms to manage and reload/restart the agent
   # If supported on the OS, reloading is prefered since it does not kill a currently active puppet run
-  case $facts['os']['family'] {
-    'Debian' : {
-      $agent_restart_command = "/usr/sbin/service ${service_name} reload"
-      $unavailable_runmodes = []
+  if $facts['service_provider'] == 'systemd' {
+    $agent_restart_command = "/bin/systemctl reload-or-restart ${service_name}"
+    $unavailable_runmodes = $facts['os']['family'] ? {
+      'Archlinux' => ['cron'],
+      default     => [],
     }
-    'Redhat' : {
-      # PSBM is a CentOS 6 based distribution
-      # it reports its $osreleasemajor as 2, not 6.
-      # thats why we're matching for '2' in both parts
-      # Amazon Linux is like RHEL6 but reports its osreleasemajor as 2017 or 2018.
-      $agent_restart_command = $facts['os']['release']['major'] ? {
-        /^(2|5|6|2017|2018)$/ => "/sbin/service ${service_name} reload",
-        '7'       => "/usr/bin/systemctl reload-or-restart ${service_name}",
-        default   => undef,
+  } else {
+    case $facts['os']['family'] {
+      'Debian': {
+        $agent_restart_command = "/usr/sbin/service ${service_name} reload"
+        $unavailable_runmodes = ['systemd.timer']
       }
-      $unavailable_runmodes = $facts['os']['release']['major'] ? {
-        /^(2|5|6|2017|2018)$/ => ['systemd.timer'],
-        default   => [],
+      'RedHat': {
+        $agent_restart_command = "/sbin/service ${service_name} reload"
+        $unavailable_runmodes = ['systemd.timer']
       }
-    }
-    'Windows': {
-      $agent_restart_command = undef
-      $unavailable_runmodes = ['cron', 'systemd.timer']
-    }
-    'Archlinux': {
-      $agent_restart_command = "/usr/bin/systemctl reload-or-restart ${service_name}"
-      $unavailable_runmodes = ['cron']
-    }
-    default  : {
-      $agent_restart_command = undef
-      $unavailable_runmodes = ['systemd.timer']
+      'Windows': {
+        $agent_restart_command = undef
+        $unavailable_runmodes = ['cron', 'systemd.timer']
+      }
+      default  : {
+        $agent_restart_command = undef
+        $unavailable_runmodes = ['systemd.timer']
+      }
     }
   }
 
@@ -409,17 +396,12 @@ class puppet::params {
   $server_ca_allow_auth_extensions        = false
   $server_ca_enable_infra_crl             = false
   $server_max_open_files                  = undef
+  $server_environment_vars                = {}
 
   $server_puppetserver_version      = undef
 
-  # Puppetserver 5.x Which auth.conf shall we use?
+  # Which auth.conf shall we use?
   $server_use_legacy_auth_conf      = false
-
-  # For Puppetserver 5, use JRuby 9k?
-  $server_puppetserver_jruby9k      = false
-
-  # this switch also controls Ruby profiling, by default disabled for Puppetserver 2.x, enabled for 5.x
-  $server_puppetserver_metrics = undef
 
   # Puppetserver metrics shipping
   $server_metrics_jmx_enable        = true
@@ -430,7 +412,7 @@ class puppet::params {
   $server_metrics_graphite_interval = 5
   $server_metrics_allowed           = undef
 
-  # For Puppetserver 5, should the /puppet/experimental route be enabled?
+  # Should the /puppet/experimental route be enabled?
   $server_puppetserver_experimental = true
 
   # For custom auth.conf settings allow passing in a template

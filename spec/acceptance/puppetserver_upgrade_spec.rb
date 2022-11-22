@@ -20,17 +20,18 @@ describe 'Scenario: minor version upgrade', unless: unsupported_puppetserver do
   when 'puppet6'
     from_version = '6.7.0'
     to_version = '6.7.2'
-  when 'puppet5'
-    from_version = '5.3.6'
-    to_version = '5.3.7'
   else
     raise 'Unsupported Puppet collection'
   end
 
   case fact('osfamily')
   when 'Debian'
-    from_version_exact = "#{from_version}-1#{fact('lsbdistcodename')}"
-    to_version_exact = "#{to_version}-1#{fact('lsbdistcodename')}"
+    if ENV['BEAKER_PUPPET_COLLECTION'] == 'puppet6'
+      # Facter 3 needs lsb-release for the os.distro.codename fact
+      on default, puppet('resource package lsb-release ensure=installed')
+    end
+    from_version_exact = "#{from_version}-1#{fact('os.distro.codename')}"
+    to_version_exact = "#{to_version}-1#{fact('os.distro.codename')}"
   else
     from_version_exact = from_version
     to_version_exact = to_version
